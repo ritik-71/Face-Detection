@@ -45,8 +45,8 @@ class EmotionAnalyzer:
                 gray = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
                 resized = cv2.resize(gray, (64, 64))
                 
-                # Format into ONNX blob format
-                blob = cv2.dnn.blobFromImage(resized, scale=1.0, size=(64, 64), mean=0, swapRB=False)
+                # Format into ONNX blob format (OpenCV >= 4.8 positional API)
+                blob = cv2.dnn.blobFromImage(resized, 1.0, (64, 64), (0,), False)
                 self.net.setInput(blob)
                 preds = self.net.forward()
                 

@@ -8,11 +8,13 @@ import numpy as np
 from database.db_manager import DatabaseManager
 from ai_models.detectors.factory import get_detector
 from ai_models.recognition.recognition_engine import FaceRecognitionEngine
-from ai_models.liveness.liveness_detector import LivenessDetector
+from ai_models.liveness.liveness_v2 import LivenessDetectorV2
 from ai_models.landmarks.landmarks_mesh import FaceMeshAnalytics
 from ai_models.analytics.emotion_analyzer import EmotionAnalyzer
 from ai_models.analytics.age_gender_estimator import AgeGenderEstimator
 from ai_models.tracking.tracker import FaceTracker
+from ai_models.analytics.surveillance import SurveillanceAnalytics
+from backend.streams.event_publisher import EventPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +34,16 @@ class CameraStreamWorker:
         self.detector = get_detector("opencv_dnn", min_confidence=0.55)
         self.tracker = FaceTracker(max_disappeared=10)
         self.recognition_engine = FaceRecognitionEngine()
-        self.liveness_detector = LivenessDetector()
+        self.liveness_detector = LivenessDetectorV2()
         self.face_mesh = FaceMeshAnalytics(max_num_faces=5)
         self.emotion_analyzer = EmotionAnalyzer()
         self.age_gender_estimator = AgeGenderEstimator()
+        
+        # Upgraded Surveillance & Event Hub Integrations
+        self.surveillance = SurveillanceAnalytics(loitering_threshold_seconds=10.0)
+        self.event_publisher = EventPublisher()
+        # Default restricted zone polygon vertices in pixels
+        self.restricted_zone = [(50, 50), (320, 50), (320, 320), (50, 320)]
         
         self.running = False
         self.thread = None
@@ -103,6 +111,11 @@ class CameraStreamWorker:
             # 2. Tracking (Persistent IDs)
             tracked_boxes = self.tracker.update(boxes)
             
+            # Draw restricted zone polygon outline on incoming frame
+            pts = np.array(self.restricted_zone, np.int32).reshape((-1, 1, 2))
+            cv2.polylines(frame, [pts], isClosed=True, color=(0, 165, 255), thickness=2)
+            cv2.putText(frame, "SECURE ZONE", (55, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 165, 255), 1)
+
             # 3. Analyze each tracked face
             active_analytics = []
             for track_id, box in tracked_boxes.items():
@@ -115,12 +128,28 @@ class CameraStreamWorker:
                 query_emb = self.recognition_engine.get_embedding(face_crop)
                 name, score = self.recognition_engine.identify_face(query_emb, self.enrolled_faces)
                 
-                # Dynamic Liveness Checks
-                liveness_res = self.liveness_detector.analyze_liveness(face_crop)
+                # Dynamic Liveness V2 Checks (EAR Blink + Laplacian + Deepfake GAN Residuals)
+                liveness_res = self.liveness_detector.evaluate_liveness_v2(face_crop)
                 
                 # Emotion, Age and Gender Predictors
                 emotion_res = self.emotion_analyzer.analyze_emotion(face_crop)
                 age_gender_res = self.age_gender_estimator.estimate(face_crop)
+                
+                # Spatial restricted zone check
+                inside_zone = self.surveillance.is_inside_restricted_zone(box, self.restricted_zone)
+                if inside_zone:
+                    self.db.log_alert(self.camera_id, "RestrictedZoneIntrusion", f"Track ID {track_id} entered Secure Zone.")
+                    self.event_publisher.publish_event("SecurityAlert", {
+                        "camera_id": self.camera_id, "track_id": track_id, "alert_type": "RestrictedZoneIntrusion"
+                    })
+                    
+                # Loitering duration checks
+                loitering_alert, duration = self.surveillance.check_loitering(track_id)
+                if loitering_alert:
+                    self.db.log_alert(self.camera_id, "LoiteringAlert", f"Track ID {track_id} lingers: {duration}s.")
+                    self.event_publisher.publish_event("SecurityAlert", {
+                        "camera_id": self.camera_id, "track_id": track_id, "alert_type": "LoiteringAlert", "duration": duration
+                    })
                 
                 # Database operations
                 if name != "Unknown":
@@ -128,14 +157,28 @@ class CameraStreamWorker:
                     attendance_res = self.db.mark_attendance(name)
                     if attendance_res.get("status") in ["check_in", "check_out"]:
                         logger.info(f"Attendance automatically recorded for {name} ({attendance_res['status']})")
+                        self.event_publisher.publish_event("AttendanceMarked", {
+                            "username": name, "status": attendance_res["status"]
+                        })
                 
-                # Spoof trigger alerts
-                if liveness_res.get("is_spoof"):
-                    self.db.log_alert(
-                        self.camera_id, 
-                        "SpoofingAttempt", 
-                        f"Liveness failure detected for face tracked ID: {track_id}."
-                    )
+                # Spoof / Deepfake trigger alerts
+                if liveness_res.get("is_spoof") or liveness_res.get("deepfake_alert"):
+                    alert_msg = f"Liveness/Deepfake mismatch for tracked ID: {track_id}."
+                    self.db.log_alert(self.camera_id, "SpoofingAttempt", alert_msg)
+                    self.event_publisher.publish_event("SecurityAlert", {
+                        "camera_id": self.camera_id, "track_id": track_id, "alert_type": "SpoofingAttempt", "message": alert_msg
+                    })
+                    
+                # Publish general detection event
+                self.event_publisher.publish_event("FaceRecognized" if name != "Unknown" else "UnknownVisitor", {
+                    "camera_id": self.camera_id,
+                    "track_id": track_id,
+                    "name": name,
+                    "age": age_gender_res["age"],
+                    "gender": age_gender_res["gender"],
+                    "emotion": emotion_res["primary"],
+                    "liveness": liveness_res["liveness_score"]
+                })
                     
                 # Log raw detection database entry for analytical graphs
                 self.db.log_detection(
@@ -150,7 +193,7 @@ class CameraStreamWorker:
                 
                 # Visual enhancements: Render annotations on the display frame
                 color = (0, 255, 0) if name != "Unknown" else (0, 0, 255)
-                if liveness_res.get("is_spoof"):
+                if liveness_res.get("is_spoof") or liveness_res.get("deepfake_alert"):
                     color = (0, 165, 255) # Orange warning alert
                     
                 cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
@@ -167,7 +210,8 @@ class CameraStreamWorker:
                     "liveness": liveness_res["liveness_score"],
                     "is_spoof": liveness_res["is_spoof"],
                     "age": age_gender_res["age"],
-                    "gender": age_gender_res["gender"]
+                    "gender": age_gender_res["gender"],
+                    "deepfake_alert": liveness_res["deepfake_alert"]
                 })
                 
             # Render watermark/metrics on frame

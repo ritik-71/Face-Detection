@@ -4,6 +4,7 @@ import json
 import base64
 import asyncio
 import logging
+import threading
 import psutil
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,8 @@ import numpy as np
 
 from database.db_manager import DatabaseManager
 from backend.streams.stream_manager import StreamManager
+from backend.assistant.agent_engine import AgenticAIEngine
+from backend.assistant.multimodal_search import MultimodalFaceSearch
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -72,6 +75,9 @@ class UserEnrollRequest(BaseModel):
 
 class AIQueryRequest(BaseModel):
     query: str
+
+class FaceSearchRequest(BaseModel):
+    image_base64: str
 
 # --- Dynamic Frame Subscriptions for WebSockets ---
 # Holds list of active WebSocket connections subscribing to each camera
@@ -166,7 +172,7 @@ def enroll_user(user_req: UserEnrollRequest):
         # Decode base64 image data
         img_data = base64.b64decode(user_req.image_base64.split(",")[-1])
         nparr = np.frombuffer(img_data, np.uint8)
-        img = cv2.imdecode(nparr, cv2.imread)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
         if img is None:
             raise HTTPException(status_code=400, detail="Invalid image file encoded in base64.")
@@ -321,47 +327,20 @@ def query_assistant(req: AIQueryRequest):
     Intelligent generative NLP query processing engine parsing language queries into active SQL reporting counts.
     Supports queries like "Who checked in today?", "How many security alerts?", "Show attendance", "Show active cameras".
     """
-    session = db.get_session()
-    try:
-        q = req.query.lower()
-        from database.models import Attendance, User, SecurityAlert, CameraStream
-        
-        if "attendance" in q or "checked in" in q or "who entered" in q:
-            records = session.query(Attendance, User).join(User, Attendance.user_id == User.id).order_by(Attendance.check_in.desc()).limit(10).all()
-            if not records:
-                return {"response": "Nobody has checked in or out today yet."}
-                
-            resp = "Here is the recent attendance log:\n\n"
-            for att, u in records:
-                status = f"Checked out at {att.check_out.strftime('%H:%M:%S')}" if att.check_out else "Active Check-in"
-                resp += f"- **{u.name}** ({u.role}): Entered at {att.check_in.strftime('%H:%M:%S')} | status: {status}\n"
-            return {"response": resp}
-            
-        elif "alert" in q or "security" in q or "spoof" in q:
-            alerts = session.query(SecurityAlert).order_by(SecurityAlert.timestamp.desc()).limit(5).all()
-            if not alerts:
-                return {"response": "Zero security anomalies logged! Everything looks safe."}
-            resp = "Security alerts logged today:\n\n"
-            for a in alerts:
-                resp += f"- **[{a.alert_type}]** {a.message} (Triggered on Camera: {a.camera_id} at {a.timestamp.strftime('%H:%M:%S')})\n"
-            return {"response": resp}
-            
-        elif "camera" in q or "stream" in q:
-            cams = session.query(CameraStream).all()
-            resp = "Registered video feeds:\n\n"
-            for c in cams:
-                status = "Online & Running" if c.is_active else "Offline"
-                resp += f"- **{c.name}** (ID: {c.id}): URL `{c.url}` | Status: **{status}**\n"
-            return {"response": resp}
-            
-        return {
-            "response": "Hello! I am your AI Face Platform Assistant. I support database queries like:\n"
-                        "- 'Show today's attendance logs'\n"
-                        "- 'Are there any security alerts?'\n"
-                        "- 'Which cameras are currently online?'"
-        }
-    finally:
-        db.close_session()
+    agent = AgenticAIEngine(db)
+    response = agent.execute_query(req.query)
+    return {"response": response}
+
+@app.post("/api/assistant/search")
+def search_face(req: FaceSearchRequest):
+    """
+    Multimodal AI Face Search API: Upload image -> Find matching registered person.
+    """
+    search_engine = MultimodalFaceSearch(db)
+    result = search_engine.search_by_image_base64(req.image_base64)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result.get("message"))
+    return result
 
 
 # ====================================================
