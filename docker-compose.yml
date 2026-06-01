@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  db:
+    image: ankane/pgvector:latest # PostgreSQL database image pre-compiled with high-performance pgvector extensions
+    container_name: face_analytics_db
+    environment:
+      POSTGRES_DB: face_analytics
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: SecretPassword123!
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d face_analytics"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    container_name: face_analytics_backend
+    environment:
+      - DATABASE_URL=postgresql://admin:SecretPassword123!@db:5432/face_analytics
+      - MODEL_DIR=/app/ai_models/weights
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ai_models/weights:/app/ai_models/weights
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ./Dockerfile
+    container_name: face_analytics_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  postgres_data:

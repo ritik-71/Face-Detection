@@ -1,0 +1,54 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Modern AI weights (prevent committing massive models)
+ai_models/weights/*.onnx
+ai_models/weights/*.caffemodel
+ai_models/weights/*.prototxt
+
+# Database and logs
+*.db
+*.log
+.system_generated/
+
+# Frontend builds and dependencies
+frontend/node_modules/
+frontend/dist/
+frontend/.eslintcache
+
+# OS files
+.DS_Store
+Thumbs.db

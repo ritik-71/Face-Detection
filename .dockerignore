@@ -1,0 +1,31 @@
+# Version Control
+.git
+.gitignore
+
+# Python logs and caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Javascript / Node
+**/node_modules/
+**/dist/
+**/build/
+.npm
+.yarn
+
+# Environments & Weights
+.venv/
+venv/
+env/
+ai_models/weights/*.onnx
+ai_models/weights/*.caffemodel
+ai_models/weights/*.prototxt
+
+# Database fallback files
+*.db
+*.log
