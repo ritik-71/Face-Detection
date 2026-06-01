@@ -18,7 +18,7 @@ class DatabaseManager:
             db_url, 
             connect_args={"check_same_thread": False} if db_url.startswith("sqlite") else {}
         )
-        self.session_factory = sessionmaker(bind=self.engine)
+        self.session_factory = sessionmaker(bind=self.engine, expire_on_commit=False)
         self.Session = scoped_session(self.session_factory)
         
         # Initialize tables

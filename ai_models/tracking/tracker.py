@@ -63,7 +63,7 @@ class FaceTracker:
             # Mark all current tracking IDs as disappeared
             for object_id in list(self.disappeared.keys()):
                 self.disappeared[object_id] += 1
-                if self.disappeared[object_id] > self.max_disappeared:
+                if self.disappeared[object_id] >= self.max_disappeared:
                     self.deregister(object_id)
             return self.boxes
 
@@ -117,7 +117,7 @@ class FaceTracker:
             for row in unused_rows:
                 object_id = object_ids[row]
                 self.disappeared[object_id] += 1
-                if self.disappeared[object_id] > self.max_disappeared:
+                if self.disappeared[object_id] >= self.max_disappeared:
                     self.deregister(object_id)
                     
             # For new detections that weren't matched, register them as new tracks

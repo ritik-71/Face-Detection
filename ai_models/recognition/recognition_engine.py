@@ -8,7 +8,8 @@ from typing import Dict, List, Tuple, Optional
 logger = logging.getLogger(__name__)
 
 # Pretrained MobileFaceNet ONNX model URL (lightweight and highly accurate face recognition model)
-MOBILEFACENET_ONNX_URL = "https://github.com/gcastro/mobilefacenet-onnx/raw/master/model/mobilefacenet.onnx"
+MOBILEFACENET_ONNX_URL_MAIN = "https://github.com/gcastro/mobilefacenet-onnx/raw/main/model/mobilefacenet.onnx"
+MOBILEFACENET_ONNX_URL_MASTER = "https://github.com/gcastro/mobilefacenet-onnx/raw/master/model/mobilefacenet.onnx"
 MOBILEFACENET_FILENAME = "mobilefacenet.onnx"
 
 class FaceRecognitionEngine:
@@ -28,8 +29,11 @@ class FaceRecognitionEngine:
         
         try:
             if not os.path.exists(self.model_path):
-                logger.info(f"Downloading MobileFaceNet ONNX model from {MOBILEFACENET_ONNX_URL}...")
-                urllib.request.urlretrieve(MOBILEFACENET_ONNX_URL, self.model_path)
+                logger.info(f"Downloading MobileFaceNet ONNX model...")
+                try:
+                    urllib.request.urlretrieve(MOBILEFACENET_ONNX_URL_MAIN, self.model_path)
+                except Exception:
+                    urllib.request.urlretrieve(MOBILEFACENET_ONNX_URL_MASTER, self.model_path)
                 logger.info(f"MobileFaceNet ONNX model saved to {self.model_path}")
             
             # Load ONNX model using OpenCV DNN module (supports CUDA if OpenCV is built with CUDA)

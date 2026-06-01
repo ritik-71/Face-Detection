@@ -7,7 +7,8 @@ from ai_models.detectors.base import BaseDetector
 
 logger = logging.getLogger(__name__)
 
-YUNET_MODEL_URL = "https://github.com/opencv/opencv_zoo/raw/master/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+YUNET_MODEL_URL_MAIN = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+YUNET_MODEL_URL_MASTER = "https://github.com/opencv/opencv_zoo/raw/master/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
 YUNET_MODEL_FILENAME = "face_detection_yunet_2023mar.onnx"
 
 class OpenCVDNNDetector(BaseDetector):
@@ -23,8 +24,11 @@ class OpenCVDNNDetector(BaseDetector):
         # Try to download/initialize YuNet DNN
         try:
             if not os.path.exists(self.model_path):
-                logger.info(f"Downloading YuNet ONNX model from {YUNET_MODEL_URL}...")
-                urllib.request.urlretrieve(YUNET_MODEL_URL, self.model_path)
+                logger.info(f"Downloading YuNet ONNX model...")
+                try:
+                    urllib.request.urlretrieve(YUNET_MODEL_URL_MAIN, self.model_path)
+                except Exception:
+                    urllib.request.urlretrieve(YUNET_MODEL_URL_MASTER, self.model_path)
                 logger.info(f"YuNet model successfully saved to {self.model_path}")
             
             # cv2.FaceDetectorYN requires height/width during initialization
