@@ -20,8 +20,8 @@ class MediaPipeDetector(BaseDetector):
                 min_detection_confidence=min_detection_confidence
             )
             logger.info("MediaPipe Face Detection successfully initialized.")
-        except ImportError:
-            logger.warning("MediaPipe library not found. MediaPipeDetector will not function unless installed.")
+        except Exception as e:
+            logger.warning(f"MediaPipe Face Detection initialization failed: {e}. MediaPipeDetector will not function.")
             
     def detect(self, image: np.ndarray) -> list[dict]:
         if self.face_detection is None:

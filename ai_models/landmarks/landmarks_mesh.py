@@ -20,8 +20,8 @@ class FaceMeshAnalytics:
                 min_tracking_confidence=0.5
             )
             logger.info("MediaPipe Face Mesh successfully initialized.")
-        except ImportError:
-            logger.warning("MediaPipe library not found. FaceMeshAnalytics will work with fallback methods.")
+        except Exception as e:
+            logger.warning(f"MediaPipe Face Mesh initialization failed: {e}. FaceMeshAnalytics will work with fallback methods.")
 
     def get_mesh_landmarks(self, image: np.ndarray) -> List[Dict]:
         """
